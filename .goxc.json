@@ -1,0 +1,8 @@
+{
+        "Tasks": [
+                "go-test",
+                "xc"
+        ],
+        "BuildConstraints": "linux,amd64 darwin,amd64",
+        "ConfigVersion": "0.9"
+}
