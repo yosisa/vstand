@@ -22,10 +22,11 @@ import (
 )
 
 type Config struct {
-	Exts     []string `toml:"extensions"`
-	CacheDir string   `toml:"cache_dir"`
-	Encoder  string   `toml:"encoder"`
-	Exposes  map[string]string
+	Exts      []string `toml:"extensions"`
+	CacheDir  string   `toml:"cache_dir"`
+	CacheSize int64    `toml:"cache_size"`
+	Encoder   string   `toml:"encoder"`
+	Exposes   map[string]string
 }
 
 type FileInfo struct {
@@ -54,6 +55,8 @@ func main() {
 	if err := os.MkdirAll(config.CacheDir, 0755); err != nil {
 		log.Fatal(err)
 	}
+	cacheDir := NewCacheDir(config.CacheDir, config.CacheSize)
+	defer cacheDir.Close()
 
 	api := web.New()
 	goji.Handle("/api/*", api)
