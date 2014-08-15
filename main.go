@@ -1,22 +1,18 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/gonuts/go-shlex"
 	"github.com/zenazn/goji"
 	"github.com/zenazn/goji/web"
 )
@@ -57,6 +53,11 @@ func main() {
 	}
 	cacheDir := NewCacheDir(config.CacheDir, config.CacheSize)
 	defer cacheDir.Close()
+
+	encoder, err := NewEncoder(config.Encoder, config.CacheDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	api := web.New()
 	goji.Handle("/api/*", api)
@@ -122,6 +123,26 @@ func main() {
 		return nil
 	}))
 
+	api.Get("/api/tasks", Handler(func(c web.C, w http.ResponseWriter, r *http.Request) error {
+		tasks := []*Task{}
+		for _, t := range encoder.Tasks {
+			tasks = append(tasks, t)
+		}
+		b, err := json.Marshal(tasks)
+		if err != nil {
+			return err
+		}
+		w.Write(b)
+		return nil
+	}))
+
+	api.Delete("/api/tasks/:id", func(c web.C, w http.ResponseWriter, r *http.Request) {
+		id := c.URLParams["id"]
+		if task, ok := encoder.Tasks[id]; ok {
+			task.Stop()
+		}
+	})
+
 	goji.Get("/video/stream", Handler(func(c web.C, w http.ResponseWriter, r *http.Request) error {
 		path := r.URL.Query().Get("path")
 		if path == "" {
@@ -139,10 +160,9 @@ func main() {
 		}
 
 		realPath := root + "/" + parts[1]
-		hash := sha256.Sum256([]byte(realPath))
-		name := fmt.Sprintf("%x", hash)[:7] + ".m3u8"
+		t := NewTask(realPath)
 
-		b, err := ioutil.ReadFile(config.CacheDir + "/" + name)
+		b, err := ioutil.ReadFile(config.CacheDir + "/" + t.Playlist)
 		if err == nil {
 			w.Header().Set("Content-Type", "application/x-mpegurl")
 			w.Write(b)
@@ -153,31 +173,9 @@ func main() {
 			return err
 		}
 
-		args, err := shlex.Split(config.Encoder)
-		if err != nil {
-			return err
-		}
-		cmdName := args[0]
-		args = append([]string{"-i", realPath}, args[1:]...)
-		args = append(args, name)
-		cmd := exec.Command(cmdName, args...)
-		cmd.Dir = config.CacheDir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Start(); err != nil {
-			return err
-		}
-		go func() {
-			if err := cmd.Wait(); err != nil {
-				log.Println(err)
-			} else {
-				log.Printf("Command done: %v", args)
-			}
-		}()
-
+		encoder.Encode(t)
 		for n := 0; n < 30; n++ {
-			b, err = ioutil.ReadFile(config.CacheDir + "/" + name)
+			b, err = ioutil.ReadFile(config.CacheDir + "/" + t.Playlist)
 			if err == nil {
 				w.Header().Set("Content-Type", "application/x-mpegurl")
 				w.Write(b)
