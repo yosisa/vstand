@@ -186,7 +186,17 @@ func main() {
 		return nil
 	}))
 
-	goji.Handle("/video/*", http.StripPrefix("/video", http.FileServer(http.Dir(config.CacheDir))))
+	goji.Get("/video/*", http.StripPrefix("/video", http.FileServer(http.Dir(config.CacheDir))))
+	goji.Delete("/video/:id", func(c web.C, w http.ResponseWriter, r *http.Request) {
+		id := c.URLParams["id"]
+		if task, ok := encoder.Tasks[id]; ok {
+			task.Stop()
+		}
+		if err := os.Remove(filepath.Join(config.CacheDir, id+".m3u8")); err != nil {
+			log.Println(err)
+		}
+	})
+
 	goji.Handle("/*", http.FileServer(http.Dir("static")))
 	goji.Serve()
 }
