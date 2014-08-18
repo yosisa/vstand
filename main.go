@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -92,12 +91,12 @@ func main() {
 			return errors.New("Not found")
 		}
 		if !fi.IsDir() {
-			f, err := os.Open(path)
+			t := NewTask(path)
+			b, err := json.Marshal(t)
 			if err != nil {
 				return err
 			}
-			w.Header().Set("Content-Type", "text/plain")
-			io.Copy(w, f)
+			w.Write(b)
 			return nil
 		}
 
